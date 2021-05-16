@@ -2,7 +2,7 @@
 
 ## Clone project
 ```bash
-git clone https://github.com/binh234/eBookstore.git
+git clone https://github.com/binh234/scrapy.git
 
 cd  scrapy
 ```
