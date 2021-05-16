@@ -17,7 +17,7 @@ After having installed required library, you can use this project in 2 ways:
 
 ### Using CLI
 ```bash
-pip main.py [-h] [-t [TEXT [TEXT ...]]] [-i [IMG [IMG ...]]] [-d DEPTH]
+python main.py [-h] [-t [TEXT [TEXT ...]]] [-i [IMG [IMG ...]]] [-d DEPTH]
                [-o OUTPUT]
                urls [urls ...]
 ```
