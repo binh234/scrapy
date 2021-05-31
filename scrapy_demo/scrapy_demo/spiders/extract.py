@@ -1,119 +1,122 @@
 import re
 from scrapy.linkextractors import LinkExtractor
+from scrapy.loader import ItemLoader
 import scrapy
 from scrapy.http import Request
-import os, sys
-from pathlib import Path
+from scrapy_selenium import SeleniumRequest
+import os
 from urllib.parse import urlparse, urljoin
+from lxml.html import iterlinks, resolve_base_href
+import validators
+import datetime
+
+
+from .helper import get_extension
+from ..items import CrawlItem
 
 URL_REGEX = re.compile(
 	r'\b((?:(ht|f)tps?:\/\/)'
 	r'(?:(?:www\.)?(?:[\da-z\.-]+)\.(?:[a-z]{2,6})|'
 	r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|'
 	r'(?:(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(?:ffff(?::0{1,4}){0,1}:){0,1}(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(?:[0-9a-fA-F]{1,4}:){1,4}:(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])))(?::[0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])?'
-	r'(?:\/[\w \.-]*)*\/?)\b' 
+	r'(?:\/[\w \.-]*)*\/?)\b'
 	, re.IGNORECASE)
-BASE_DIR = os.path.join(Path(__file__).resolve().parent.parent.parent.parent, "result/")
+BASE_DIR = os.path.join(os.getcwd(), "result/")
+
 
 def extract_list(value):
-	if isinstance(value, list):
-		return value
-	return value.replace(" ", "").split(",")
-
-class LinkExtractorCustom(LinkExtractor):
-
-	def __init__(self, allow_ext, *args, **kwargs):
-		super(LinkExtractorCustom, self).__init__(*args, **kwargs)
-
-		self.tags = ['a', 'area', 'img']
-		self.attrs = ['href', 'src']
-		self.deny_extensions = [ext for ext in self.deny_extensions if ext not in allow_ext]
+    if isinstance(value, list):
+        return value
+    return value.replace(" ", "").split(",")
 
 class ExtractSpider(scrapy.Spider):
-	name = "extractor"
-	# start_urls = [
-	# 	'https://www.imagescape.com/media/uploads/zinnia/2018/08/20/scrape_me.html',
-	# 	'https://truyentranhaudio.online/manga-slug/dua-mami-ve-nha/',
-	# 	'https://truyentranhaudio.online/manga-slug/toi-tu-dong-san-mot-minh/chap-86/',
-	# 	'https://www.daimler.com/investors/reports-news/annual-reports/',
-	# 	'http://truyenqq.com/truyen-tranh/tho-ren-huyen-thoai-9311',
-	# 	'http://truyenqq.com/truyen-tranh/vua-choi-da-co-tai-khoan-vuong-gia-10552',
-	# 	'http://truyenqq.com/truyen-tranh/toi-la-tho-san-co-ki-nang-tu-sat-cap-sss-10675',
-	# 	'https://vingroup.net/quan-he-co-dong/bao-cao-tai-chinh/2020',
-	# 	'http://www.nettruyen.com/truyen-tranh/tri-tue-nhan-tao-36737',
-	# 	'https://www.coolfreecv.com/',
-	# 	'https://www.resumeviking.com/templates/word/',
-	# ]
+    name = "extractor"
+    start_urls = [
+        # 'https://truyentranhaudio.online/manga-slug/dua-mami-ve-nha/',
+        # 'https://truyentranhaudio.online/manga-slug/toi-tu-dong-san-mot-minh/chap-86/',
+        # 'https://www.daimler.com/investors/reports-news/annual-reports/',
+        # 'http://truyenqq.com',
+        # 'http://truyenqq.com/truyen-tranh/vua-choi-da-co-tai-khoan-vuong-gia-10552',
+        # 'https://vingroup.net/quan-he-co-dong/bao-cao-tai-chinh/2020',
+        # 'https://www.coolfreecv.com/',
+        # 'https://www.resumeviking.com/templates/word/',
+        # "https://zingmp3.vn",
+        # "https://tailieu.vn/",
+        # "https://www.tailieu123.org/",
+        "https://www.tailieu123.org/giai-bai-tap-hoa-lop-9-protein.html"
+    ]
 
-	# custom_settings = {
-	# 	'DEPTH_LIMIT': 1,
-	# 	'DOWNLOAD_DELAY': 1,
-	# }
+    custom_settings = {
+        'FEED_EXPORT_FIELDS': ['name', 'url', 'extension', 'time'],
+    }
 
-	def __init__(self, *args, **kwargs):
-		super(ExtractSpider, self).__init__(*args, **kwargs)
-		self.start_urls = extract_list(kwargs.get("urls", []))
-		self.txt_extensions = extract_list(kwargs.get("text", [".pdf"]))
-		self.img_extensions = extract_list(kwargs.get("img", []))
+    def __init__(self, *args, **kwargs):
+        super(ExtractSpider, self).__init__(*args, **kwargs)
+        self.start_urls = extract_list(kwargs.get("urls", []))
+        self.extensions = extract_list(kwargs.get("ext", [".pdf"]))
 
-		self.output_dir = kwargs.get("output", BASE_DIR)
-		# print(kwargs)
+        self.output_dir = kwargs.get("output", BASE_DIR)
+        # print(kwargs)
 
-		self.link_extractor = LinkExtractorCustom(self.txt_extensions + self.img_extensions)
+    def start_requests(self):
+        for url in self.start_urls:
+            yield Request(url=url, callback=self.parse)
 
-	def parse(self, response, **kwargs):
-		print("URL:", response.url, "\n\n")
-		if hasattr(response, "text"): # HTML page
-			# Extract links in HTML page	
-			for link in self.link_extractor.extract_links(response):
-				# print(link)
-				yield Request(
-					response.urljoin(link.url), 
-					callback=self.parse,
-					cb_kwargs=dict(prev_url=response.url)
-				)
+    def parse(self, response, **kwargs):
+        # driver = response.request.meta['driver']
+        # self.logger.info("Crawl " + response.url)
 
-			# Extract image links in img tag
-			if self.img_extensions:	
-				for src in response.css("img::attr(src)").extract():
-					# print(src)
-					yield Request(
-						url=response.urljoin(src),
-						callback=self.parse,
-						cb_kwargs=dict(prev_url=response.url)
-					)
+        ext = get_extension(response)
+        url = response.url if response.url[-1] != '/' else response.url[:-1]
+        name = url.split("?")[0].split("/")[-1]
+        name = name.replace(ext, '') + ext
+        crawl_time = datetime.datetime.now()
+        check_ext = ext in self.extensions
+        prev_url = kwargs.get("prev_url", None)
 
-			# Extract links in script tag	
-			for script in response.css("script::text").extract():
-				for url in re.findall(URL_REGEX, script):
-					# print(url[0])
-					yield Request(
-					response.urljoin(url[0]), 
-					callback=self.parse,
-					cb_kwargs=dict(prev_url=response.url)
-					)
-		else:
-			self.parse_item(response, **kwargs)
+        if check_ext:
+            self.save_item(name, response, prev_url)
+        
+        loader = ItemLoader(item=CrawlItem())
+        loader.add_value('name', name)
+        loader.add_value('url', url)
+        loader.add_value('extension', ext[1:])
+        loader.add_value('time', crawl_time.strftime("%d-%m-%Y %H:%M:%S"))
 
-	def parse_item(self, response, **kwargs):
-		url = response.url.split("?")[0]                                                                                                          
-		check_txt = next(filter(lambda x: url.lower().endswith(x), self.txt_extensions), False)
-		check_img = next(filter(lambda x: url.lower().endswith(x), self.img_extensions), False)
+        yield loader.load_item()
 
-		if check_txt or check_img:
-			prev_url = kwargs.get('prev_url', None)
-			if prev_url:
-				result = urlparse(prev_url)
-				directory = result.path[1:].split(".")[0]
-				output_dir = os.path.join(self.output_dir, directory)
-			else:
-				output_dir = self.output_dir
+        
+        if hasattr(response, "text"):  # HTML page
+            links = []
+            # Extract links
+            for link in re.findall(URL_REGEX, response.text):
+                links.append(response.urljoin(link[0]))
 
-			if not os.path.exists(output_dir):
-				os.makedirs(output_dir)
+            links.extend([response.urljoin(link) for element, attribute, link, pos in iterlinks(resolve_base_href(response.text))])
+            links = set(links)
+            links = list(filter(lambda link: validators.url(link), links))
+            self.logger.info("Found {} links on {}".format(len(links), url))
+            for link in links:
+                # print(link)
+                yield Request(
+                    url=link,
+                    callback=self.parse,
+                    cb_kwargs=dict(prev_url=response.url)
+                )
 
-			path = os.path.join(output_dir, url.split('/')[-1])
+    def save_item(self, name, response, prev_url):
+        if prev_url:
+            result = urlparse(prev_url)
+            directory = result.path[1:].split(".")[0]
+            output_dir = os.path.join(self.output_dir, directory)
+        else:
+            output_dir = self.output_dir
 
-			self.logger.info('Saving file to %s', path)
-			with open(path, 'wb') as f:
-				f.write(response.body)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        path = os.path.join(output_dir, name)
+
+        self.logger.info("Saving file to %s" % path)
+        with open(path, "wb") as f:
+            f.write(response.body)
